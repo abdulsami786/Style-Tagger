@@ -1,0 +1,71 @@
+[
+ {
+  "supplier": "Lakhany",
+  "gender": "women",
+  "subCategory": "Ready to Wear",
+  "subSub": "trouser"
+ },
+ {
+  "supplier": "Lakhany",
+  "gender": "men",
+  "subCategory": "Unstitched",
+  "subSub": "suits"
+ },
+ {
+  "supplier": "Lakhany",
+  "gender": "women",
+  "subCategory": "Unstitched",
+  "subSub": "suits"
+ },
+ {
+  "supplier": "Lakhany",
+  "gender": "men",
+  "subCategory": "Unstitched",
+  "subSub": "kurtaset"
+ },
+ {
+  "supplier": "Lakhany",
+  "gender": "women",
+  "subCategory": "Unstitched",
+  "subSub": "trouser"
+ },
+ {
+  "supplier": "GulAhmed",
+  "gender": "men",
+  "subCategory": "Unstitched",
+  "subSub": "suits"
+ },
+ {
+  "supplier": "GulAhmed",
+  "gender": "men",
+  "subCategory": "Unstitched",
+  "subSub": "kurtaset"
+ },
+ {
+  "supplier": "Lakhany",
+  "gender": "women",
+  "subCategory": "Ready to Wear",
+  "subSub": "pant"
+ },
+ {
+  "id": "4879968403515"
+ },
+ {
+  "supplier": "CrossStitch",
+  "gender": "women",
+  "subCategory": "Ready to Wear",
+  "subSub": "pant"
+ },
+ {
+  "supplier": "Lakhany",
+  "gender": "men",
+  "subCategory": "Unstitched",
+  "subSub": "kurta"
+ },
+ {
+  "supplier": "Lakhany",
+  "gender": "women",
+  "subCategory": "Unstitched",
+  "subSub": "kurtaset"
+ }
+]

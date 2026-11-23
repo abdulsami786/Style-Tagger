@@ -1,0 +1,8 @@
+.venv/
+data/
+__pycache__/
+labels/*.tmp
+removed_*/
+liveProducts*.json
+*.log
+.env

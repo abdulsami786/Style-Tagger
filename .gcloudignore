@@ -1,0 +1,8 @@
+.gcloudignore
+.venv/
+__pycache__/
+data/
+labels/
+removed_*/
+liveProducts.cleaned.json
+firebase-debug.log
