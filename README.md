@@ -1,7 +1,7 @@
 # Desi Tagger
 
-Two taggers in one local web app, switched with **Style | Category** at the top of the page. Most of this
-file is about Style; see [Category tagger](#category-tagger) for what differs.
+Three taggers in one local web app, switched with **Style | Category | Bridal** at the top of the page. Most of this
+file is about Style; see [Category tagger](#category-tagger) and [Bridal tagger](#bridal-tagger) for what differs.
 
 Tags every Lookflock product with the occasions a Pakistani shopper would wear it to (wedding, bridal,
 festive, party, casual, office and so on), plus a formality level from 1 (daily) to 5 (bridal).
@@ -148,6 +148,58 @@ Keep the laptop awake during a full training; sleep pauses it. `python run.py ta
 **Which labels taught it** works here too, but its push numbers are close to the score rather than exact, because this
 tagger is trained with a faster method than Style's.
 
+## Bridal tagger
+
+Press **Bridal** at the top of the page. It tags a bride's outfits with the wedding functions she would wear them to,
+the app's bridal substyles: `mehendi`, `barat`, `valima`, `nikah` and `dholki`, 1 to 3 per product, likeliest first.
+What each one means is in [TAGS.md](TAGS.md#bridal-substyles). The screens work as in Category.
+
+- **Only a bride's outfits.** A guest's outfit gets no bridal tags, however formal: not a 3-piece suit, a kurta or a
+  sister-of-the-bride lehenga. A women's product is a bride's outfit (`bridal_scope()` in `desi_rules.py`) when:
+  - Style tags it `bridal_wear`, or Style's model chose `bridal_wear` and only the bride rule's price removed it (Sana
+    Safinaz's bridal lehengas never say "bridal"). Under Rs 100k it also needs a bridal silhouette: a cheaper kurta
+    "for the bride or a close attendee" is marketing; or
+  - it is a wedding outfit in a bridal silhouette (lehenga, gharara, sharara, pishwas, farshi, by its words or its
+    category) at Rs 100k or more, or Rs 70k in the mehndi colours. These are the lighter outfits of her mehndi, dholki
+    and nikah, which Style's `bridal_wear`, her heaviest, leaves out. In the photos, cheaper ones were mostly guests'
+    and sisters' outfits. The prices are `BRIDE_OUTFIT_PRICE` and `BRIDE_MEHNDI_PRICE`.
+
+  Never a black outfit (brides don't wear black), a sherwani or prince coat (one brand files its groom wear under
+  women), or a product your Style label tags without `bridal_wear`. That makes 637 products. The others get none, and
+  the Bridal catalog leaves them out unless you search for them. Bridal reads Style's output each time it trains, so
+  after a Style retrain, retrain Bridal too.
+- **Starting labels come from rules.** 341 of them start with a guess from `bridal_events()` in `desi_rules.py`: the
+  one or two functions the listing names ("mehndi", "baraat", "walima", "nikkah", "dholki"), or else its main colour,
+  the first one its name, URL or description mentions:
+
+  | Main colour | Starting label |
+  |---|---|
+  | red, maroon, burgundy, wine | barat |
+  | yellow, mustard, orange, green, hot pink, magenta, teal, multicolour | mehendi, plus dholki unless it is one of her heaviest outfits (Style's `bridal_wear`) |
+  | white, off-white, ivory, cream | nikah |
+  | gold, silver, champagne, beige | valima |
+  | pastels: lilac, mint, peach, ice blue, blush | nikah and valima |
+
+  Pink, blue and purple are worn to every function, so they give no guess. Like brand categories in Category, starting
+  labels train the model but don't decide a product's output. The model also learns from each product's photo, so it
+  tags the other 296, whose text names neither a function nor a colour.
+- **Checked by photo.** Per function, the photos of the 12 top-scored outfits and 12 at random were checked by eye
+  against Pakistani bridal guides for what the bride wears at each function, and Google Images for "pakistani dholki
+  bridal dress". 19 to 23 of each 24 were a bride's outfit for that function. The misses were plainer pieces (a
+  sample-sale frock and plain lehengas under dholki) and colours the photo contradicts (a blue saree under barat).
+- **Your labels decide,** as in Category: 1 to 3 functions, no formality. Only your edits are stored, in
+  `labels/bridal_labels.jsonl`; **Restore** clears them. A label also decides a product that isn't a bride's outfit,
+  for example a lighter yellow gharara you want under dholki.
+- **Dholki is the lighter end of mehendi:** 67 of the 83 dholki outfits are also mehendi. The rules tell them apart
+  only by weight: label some real dholki outfits, and mehendi ones that aren't dholki.
+
+Like Category, it saves its fitted model, in `data/bridal_tagger.joblib`. After a server start its first click loads
+that in about 10 seconds, and a retrain refits only the functions whose labels changed. It trains from scratch, in about a
+minute, the first time and after the catalog, the code or Style's bridal tags change. `python run.py tag --mode bridal` writes
+`data/bridal_predictions.jsonl` without the web app, after tagging Style. Its lines have the fields of
+`data/category_predictions.jsonl`. `source` is `label`, `excluded`, `model`, or `not bridal` for products that aren't a
+bride's outfit, which output no tags (the model's answer stays in `modelTags`).
+
 ## Rules labels can't change
 
 Some decisions are rules in `desi_rules.py`, because the desi meaning is fixed. The web app warns you when
@@ -251,8 +303,9 @@ else waits for it.
 | `labels/labels.original.jsonl` | The starting labels, used by "Restore" and the benchmark. The web app never edits it. Trimmed to 886 on 3 Nov 2026, when 85 of its products left the catalog |
 | `labels/exclusions.json` | Your exclusions (the web app edits this): products that get no tags and never train. Created on the first exclusion |
 | `labels/category_labels.jsonl`, `labels/category_exclusions.json` | The Category tagger's edits and exclusions. Each is created on the first one |
+| `labels/bridal_labels.jsonl`, `labels/bridal_exclusions.json` | The Bridal tagger's edits and exclusions, the same way |
 | `removed_products_2026-11-03/` | The 6,583 products dropped from the catalog on 3 Nov 2026 (`removed_products.csv`), with the labels, photo vectors and failed-download ids that were removed with them, in case they are needed again |
-| `data/` | Generated: cleaned catalog, photo vectors, feature cache, `predictions.jsonl` (the output), and the `category_*` files for the Category tagger |
+| `data/` | Generated: cleaned catalog, photo vectors, feature cache, `predictions.jsonl` (the output), and the `category_*` and `bridal_*` files for those taggers |
 
 The output `data/predictions.jsonl` has one product per line: `id, name, supplier, ..., tags, tagScores,
 formality, formalityLabel, evidence, ruleNotes, usedImage, needsReview, source`. `source` is `label` for

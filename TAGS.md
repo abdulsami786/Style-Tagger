@@ -41,3 +41,22 @@ Each product also gets a **formality** level from 1 to 5. Pakistani brands sell 
 - **Kids' items** follow the same rules.
 - **Men's waistcoat over kurta** is `festive_wear` plus `wedding`. A western vest is `office_wear` plus `smart_casual`.
 - **Men's unstitched suiting fabric** (wash and wear, boski, cotton) is `casuals` plus `office_wear`. Jamawar or karandi suiting is `festive_wear`.
+
+## Bridal substyles
+
+The Bridal tagger gives each **bride's outfit** 1 to 3 of these: the wedding functions she would wear it to, the app's
+bridal substyles. Guests' outfits get none, however formal: a 3-piece suit, a kurta or a sister-of-the-bride lehenga is
+not a bride's outfit. Label by the function a bride would wear the outfit to.
+
+| Tag | The function | What the bride wears |
+|---|---|---|
+| `mehendi` | The mehndi (and mayun) night: henna, dancing, colour | Yellow, mustard, orange, green, hot pink or multicolour; gota, mirror work, phulkari; lehenga, gharara, sharara. Light to medium work |
+| `barat` | The wedding day, when the bride leaves with the groom's family | Red, maroon or wine; her heaviest outfit (zardozi, dabka, tilla, stones); lehenga-choli or farshi gharara |
+| `valima` | The groom's family's reception after the wedding | Pastels, silver, gold or champagne; elegant, medium-heavy work; gown, maxi or pastel lehenga |
+| `nikah` | The marriage ceremony | White, off-white, ivory or soft pastels; understated work; maxi, anarkali, sharara or gharara, farshi |
+| `dholki` | The informal music nights before the wedding | The mehndi palette, lighter: gharara or sharara with a short shirt, or a light lehenga; light gota and mirror work |
+
+- **A pastel outfit** often suits both `nikah` and `valima`: give it both.
+- **`dholki` is the lighter end of the mehndi palette.** A bright outfit can be both; her heaviest bright lehenga is `mehendi` only.
+- **Pink, blue and purple** are worn to every function. Decide by the work and silhouette: the heaviest lehenga is `barat`, a glamorous gown is `valima`.
+- **Black** is never a bride's outfit.

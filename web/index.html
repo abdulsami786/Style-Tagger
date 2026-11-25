@@ -14,6 +14,7 @@
   --c-bridal_wear: #d1336b; --c-wedding: #c98f0b; --c-festive_wear: #2e9a4b; --c-party_wear: #8a3fd1;
   --c-casuals: #7d8aa1; --c-smart_casual: #3a8fba; --c-office_wear: #2f5fd0; --c-modest: #92603f;
   --c-streetwear: #454b5e; --c-sportswear: #0f9a9a; --c-travel_wear: #e0701c;
+  --c-mehendi: #d9a400; --c-barat: #c0262d; --c-valima: #a8875a; --c-nikah: #5f9fc4; --c-dholki: #3f9b3a;
   --radius: 10px;
   --font: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -165,6 +166,7 @@ details summary { cursor: pointer; color: var(--accent); font-weight: 600; font-
     <div class="modes" role="group" aria-label="Which tagger">
       <button type="button" data-mode="style" aria-pressed="false">Style</button>
       <button type="button" data-mode="category" aria-pressed="false">Category</button>
+      <button type="button" data-mode="bridal" aria-pressed="false">Bridal</button>
     </div>
     <span id="untrained" class="pill" hidden></span>
     <button id="retrain" class="btn primary" type="button">Retrain</button>
@@ -249,8 +251,9 @@ const money = (p) => (p ? "Rs " + Math.round(p).toLocaleString("en-US") : "price
 const pct = (v) => Math.round(v * 100) + "%";
 const FORMALITY = { 1: "daily", 2: "semi-formal", 3: "festive / formal", 4: "wedding formal", 5: "bridal" };
 // The tagger in use lives in the address (?mode=category), so switching is just loading the page for the other one.
-const MODE = new URLSearchParams(location.search).get("mode") === "category" ? "category" : "style";
-const CATEGORY = MODE === "category";
+const MODE = { category: "category", bridal: "bridal" }[new URLSearchParams(location.search).get("mode")] || "style";
+const CATEGORY = MODE === "category", STYLE = MODE === "style";
+const SEED = CATEGORY ? "Brand category" : "Starting label";   // a label you didn't set: it trains but doesn't decide
 
 let S = null;                 // server state
 let labelItems = [];          // every labelled product, for the My labels tab
@@ -292,7 +295,7 @@ function imgTag(src, alt = "") {
 }
 function noPhoto(img) { const d = document.createElement("div"); d.className = "noimg"; d.textContent = "no photo"; img.replaceWith(d); }
 
-const NO_TAGS = '<span class="muted">no tags (excluded)</span>';
+const NO_TAGS = `<span class="muted">no tags (${MODE === "bridal" ? "excluded, or not a bride's outfit" : "excluded"})</span>`;
 const exclBadge = (it) => it.excluded
   ? `<span class="badge">${it.source === "excluded" ? "excluded" : "excluded · retrain to apply"}</span>`
   : it.source === "excluded" ? '<span class="badge quiet">included again · retrain to apply</span>' : "";
@@ -303,21 +306,22 @@ function card(it, mode) {
     badges = `<span class="badge quiet">push +${it.push.toFixed(1)}</span>`;
     rows = row("Their label", tagChips(it.label || it.tags));
   } else if (mode === "labels") {
-    rows = row(it.pinned ? "Your label" : "Brand category", tagChips(it.label)) +
+    rows = row(it.pinned ? "Your label" : SEED, tagChips(it.label)) +
       row(it.pinned ? "Without your label" : "Tagger says", it.cvTags ? compareChips(it.cvTags, it.label) : '<span class="muted">retrain to see</span>');
     badges = (it.disagrees ? '<span class="badge">tagger disagrees</span>' : "") + (it.edited ? '<span class="badge">edited</span>' : "");
   } else if (mode === "changes") {
     badges = `<span class="badge${it.cause === "nudged at a cut-off" ? " quiet" : ""}">${esc(it.cause)}</span>`;
     rows = row("Before", it.before.map((t) => chip(t, it.after.includes(t) ? "" : "lost")).join("") || NO_TAGS) +
       row("Now", it.after.map((t) => chip(t, it.before.includes(t) ? "" : "gained")).join("") || NO_TAGS);
-    if (it.label) rows += row(it.pinned ? "Your label" : "Brand category", tagChips(it.label));
+    if (it.label) rows += row(it.pinned ? "Your label" : SEED, tagChips(it.label));
   } else {
     rows = it.source === "label"
       ? row("Output · your label", tagChips(it.tags)) +
         (it.modelTags && it.modelTags.join() !== it.tags.join() ? row("Model alone", compareChips(it.modelTags, it.tags)) : "")
       : it.source === "excluded" ? row("Output", NO_TAGS)
+      : it.source === "not bridal" ? row("Output", '<span class="muted">none: not a bride\'s outfit</span>')
       : row("Tagger", tagChips(it.tags, it.ruleAdded));
-    if (it.label && it.source !== "excluded" && it.label.join() !== it.tags.join()) rows += row(it.pinned ? "Your label · retrain to apply" : "Brand category", tagChips(it.label));
+    if (it.label && it.source !== "excluded" && it.label.join() !== it.tags.join()) rows += row(it.pinned ? "Your label · retrain to apply" : SEED, tagChips(it.label));
   }
   badges += exclBadge(it);
   return `<article class="card" data-id="${esc(it.id)}" tabindex="0">${imgTag(it.thumb)}<div class="body">` +
@@ -331,7 +335,7 @@ async function refresh() {
   fillCatalogTags();
   const a = S.agreement;
   $("#status").innerHTML = `${S.products.toLocaleString()} products · trained on ${S.trainedLabels.toLocaleString()} labels · ` +
-    `agrees with ${CATEGORY ? "the brand categories and your labels" : "your labels"}: F1 <span class="num">${a.micro_f1.toFixed(2)}</span>, top tag right <span class="num">${pct(a.top_tag_right)}</span> · ` +
+    `agrees with ${STYLE ? "your labels" : `the ${CATEGORY ? "brand categories" : "starting labels"} and your labels`}: F1 <span class="num">${a.micro_f1.toFixed(2)}</span>, top tag right <span class="num">${pct(a.top_tag_right)}</span> · ` +
     `${S.withVectors.toLocaleString()} products have a photo vector`;
   const u = $("#untrained");
   const pending = [S.untrained ? `${S.untrained} label change${S.untrained === 1 ? "" : "s"}` : "",
@@ -351,7 +355,7 @@ function fillTagSelects() {
   $("#cat-gender").insertAdjacentHTML("beforeend", (S.genders || []).map((g) =>  // [] until the server restarts
     `<option value="${esc(g)}">${g ? esc(g[0].toUpperCase() + g.slice(1)) : "(none)"}</option>`).join(""));
   for (const id of ["#bulk-from", "#bulk-to", "#bulk-add", "#bulk-remove"]) $(id).innerHTML = opts;
-  if (!CATEGORY) { $("#bulk-from").value = "wedding"; $("#bulk-to").value = "festive_wear"; }
+  if (STYLE) { $("#bulk-from").value = "wedding"; $("#bulk-to").value = "festive_wear"; }
 }
 
 // The catalog filters by the tags products have now, so it lists only those, with how many. Rebuilt on every
@@ -526,7 +530,7 @@ function closeDrawer() {
 
 function warnings() {
   const w = [], t = draft.tags, f = current.flags;
-  if (CATEGORY || !t.length) return w;  // these are the style tagger's house rules
+  if (!STYLE || !t.length) return w;  // these are the style tagger's house rules
   const own = "This product will show your label, but ";
   if (t.includes("bridal_wear") && !f.bride) {
     w.push(f.men ? own + "the tagger never gives menswear bridal wear (groom wear is wedding), so similar products won't get it."
@@ -545,14 +549,14 @@ function renderEditor() {
     (i > 0 ? `<button type="button" data-main="${esc(t)}" title="Make this the main tag" aria-label="Make ${esc(nice(t))} the main tag">↑</button>` : "") +
     `<button type="button" data-drop="${esc(t)}" aria-label="Remove ${esc(nice(t))}">×</button></span>`).join("");
   const w = warnings();
-  const fromBrand = CATEGORY && current.label && !current.label.hand;
-  const note = fromBrand ? "This is the brand's category. It trains the tagger but does not decide this product's output. Keep or change it (1 to 3 tags, the first is the main one) and save to make it your own label: after a retrain this product shows it."
+  const fromSeed = !STYLE && current.label && !current.label.hand;
+  const note = fromSeed ? `This is ${CATEGORY ? "the brand's category" : "a starting label, guessed from the function its listing names or else its main colour"}. It trains the tagger but does not decide this product's output. Keep or change it (1 to 3 tags, the first is the main one) and save to make it your own label: after a retrain this product shows it.`
     : current.label ? "Your label. After a retrain this product shows it, and it trains the tagger."
     : "Not labelled yet. Pick the right tags (1 to 3, the first is the main one) and save. After a retrain this product shows your label, and similar products learn from it.";
   const picker = CATEGORY  // about 80 categories: a list, not a wall of buttons
     ? `<select id="add-tag" aria-label="Add a category"><option value="">Add a category...</option>${S.tags.filter((t) => !draft.tags.includes(t)).map((t) => `<option value="${esc(t)}">${esc(nice(t))}</option>`).join("")}</select>`
     : `<div class="tagbtns" role="group" aria-label="Tags">${S.tags.map((t) => `<button type="button" data-toggle="${t}" aria-pressed="${draft.tags.includes(t)}">${nice(t)}</button>`).join("")}</div>` +
-      `<div class="formality" role="group" aria-label="Formality">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-formality="${n}" aria-pressed="${draft.formality === n}">${n} ${FORMALITY[n]}</button>`).join("")}</div>`;
+      (STYLE ? `<div class="formality" role="group" aria-label="Formality">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-formality="${n}" aria-pressed="${draft.formality === n}">${n} ${FORMALITY[n]}</button>`).join("")}</div>` : "");
   $("#editor").innerHTML =
     `<p class="muted" style="margin:0">${note}</p>` +
     `<div class="picked">${picked || '<span class="muted">No tags picked.</span>'}</div>` + picker +
@@ -585,19 +589,21 @@ function renderDrawer() {
       ${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">Open on the brand's site ↗</a>` : ""}
       ${d.desc || d.details ? `<p class="desc">${esc(d.desc || d.details)}</p>` : ""}
     </div></div>
-    <section><h3>${d.source === "label" ? "Output: your label" : d.source === "excluded" ? "Output: excluded, no tags" : "What the tagger says"}</h3>
-      <div class="chips">${scores || '<span class="muted">No tags: this product is excluded.</span>'}</div>
-      ${d.source === "excluded" ? `<div class="row"><span class="lbl">The model alone says</span><span class="chips">${tagChips(d.modelTags)}</span></div>` : ""}
+    <section><h3>${d.source === "label" ? "Output: your label" : d.source === "excluded" ? "Output: excluded, no tags"
+        : d.source === "not bridal" ? "Output: none, not a bride's outfit" : "What the tagger says"}</h3>
+      <div class="chips">${scores || `<span class="muted">${d.source === "not bridal" ? "No tags: bridal tags are for a bride's outfits: what Style calls bridal wear, or a lehenga, gharara or sharara at Rs 100k or more (70k in the mehndi colours), never black. Label it to give it some anyway."
+        : "No tags: this product is excluded."}</span>`}</div>
+      ${d.source === "excluded" || d.source === "not bridal" ? `<div class="row"><span class="lbl">The model alone says</span><span class="chips">${tagChips(d.modelTags)}</span></div>` : ""}
       ${d.source === "label" ? `<div class="row"><span class="lbl">The model alone says</span><span class="chips">${compareChips(d.modelTags, d.tags)}</span></div>
         <p class="why muted">Your label is this product's output. Similar unlabelled products get the model's answer, which more labels like this one will move.</p>` : ""}
-      <p class="why">${CATEGORY ? madeFrom[0].toUpperCase() + madeFrom.slice(1) : `Formality ${d.formality} (${esc(FORMALITY[d.formality])}) · ${madeFrom}`}</p>
+      <p class="why">${STYLE ? `Formality ${d.formality} (${esc(FORMALITY[d.formality])}) · ${madeFrom}` : madeFrom[0].toUpperCase() + madeFrom.slice(1)}</p>
       ${notes ? `<ul class="notes">${notes}</ul>` : ""}
       ${d.why.length ? `<p class="why"><span class="muted">Why:</span> ${d.why.map(esc).join(" · ")}</p>` : ""}
       ${changed ? `<div class="row"><span class="lbl">Before the last retrain</span><span class="chips">${tagChips(d.before)}</span></div>` : ""}
       <details><summary>${CATEGORY ? "The 12 likeliest categories" : "All tag probabilities"} (line = the tag's cut-off)</summary><div class="probs">${probs}</div></details>
     </section>
     <section><h3>Which labels taught it ${d.source === "model" ? "these tags" : "the model's tags"}</h3>
-      <p class="why muted">For each tag the model gives this product, the ${CATEGORY ? "labels (brand categories and your own)" : "hand labels"} that pushed it there the most: similar
+      <p class="why muted">For each tag the model gives this product, the ${STYLE ? "hand labels" : `labels (${CATEGORY ? "brand categories" : "starting labels"} and your own)`} that pushed it there the most: similar
         labelled products whose label has that tag. These are the biggest pushes, not all of them. Open one to fix or exclude it,
         then press Retrain.</p>
       ${taught || '<p class="why muted">The model gives this product no tag.</p>'}
@@ -635,14 +641,14 @@ async function saveLabel() {
   await refresh();
 }
 async function removeLabel() {
-  const yours = CATEGORY && current.label.hand;
+  const yours = !STYLE && current.label.hand;
   await api("/api/labels", { remove: [current.id] });
-  if (yours) {  // your label goes away and the brand's category comes back
+  if (yours) {  // your label goes away and the starting label (the brand's category) comes back, if it has one
     current = await api("/api/product?id=" + encodeURIComponent(current.id));
-    draft = { tags: [...current.label.tags] };
+    draft = { tags: current.label ? [...current.label.tags] : [] };
   } else { current.label = null; draft = { tags: [], formality: current.formality }; }
   renderEditor();
-  toast(yours ? "Back to the brand's category. Press Retrain to apply." : "Label removed. Press Retrain to apply.");
+  toast(yours && current.label ? `Back to the ${SEED.toLowerCase()}. Press Retrain to apply.` : "Label removed. Press Retrain to apply.");
   stale.labels = true; stale.catalog = true;
   await refresh();
 }
@@ -650,7 +656,7 @@ async function removeLabel() {
 // ---- retrain and restore ------------------------------------------------------------------------------
 async function retrain() {
   const btn = $("#retrain");
-  btn.disabled = true; btn.textContent = `Retraining... (about ${CATEGORY ? Math.ceil(S.trainSeconds / 60) + " min" : "30 s"})`; document.body.classList.add("busy");
+  btn.disabled = true; btn.textContent = `Retraining... (about ${CATEGORY ? Math.ceil(S.trainSeconds / 60) + " min" : STYLE ? "30 s" : "1 min"})`; document.body.classList.add("busy");
   try {
     const r = await api("/api/retrain", {});
     const k = r.causes;
@@ -658,7 +664,7 @@ async function retrain() {
       `${k["follows your change"].toLocaleString()} followed your change, ` +
       (k["your exclusions"] ? `${k["your exclusions"].toLocaleString()} from your exclusions, ` : "") +
       `${k["nudged at a cut-off"].toLocaleString()} nudged at a cut-off. ` +
-      `Agreement with ${CATEGORY ? "the labels" : "your labels"}: F1 ${r.agreementBefore.micro_f1.toFixed(2)} → ${r.agreement.micro_f1.toFixed(2)}.`, 10000);
+      `Agreement with ${STYLE ? "your labels" : "the labels"}: F1 ${r.agreementBefore.micro_f1.toFixed(2)} → ${r.agreement.micro_f1.toFixed(2)}.`, 10000);
     Object.keys(stale).forEach((k) => (stale[k] = true));
     view.changes.tag = ""; view.changes.kind = "";
     await refresh();
@@ -678,7 +684,7 @@ async function restore() {
 // ---- events -------------------------------------------------------------------------------------------
 document.addEventListener("click", (e) => {
   const t = e.target;
-  if (t.dataset.mode) { if (t.dataset.mode !== MODE) location.search = t.dataset.mode === "category" ? "?mode=category" : ""; return; }
+  if (t.dataset.mode) { if (t.dataset.mode !== MODE) location.search = t.dataset.mode === "style" ? "" : "?mode=" + t.dataset.mode; return; }
   if (t.closest(".tabs button")) return showTab(t.closest(".tabs button").dataset.tab);
   if (t.closest(".close") || t.id === "backdrop") return closeDrawer();
   const c = t.closest(".card");
@@ -700,7 +706,7 @@ document.addEventListener("click", (e) => {
   if (t.dataset.drop) { draft.tags = draft.tags.filter((x) => x !== t.dataset.drop); return renderEditor(); }
   if (t.dataset.main) { draft.tags = [t.dataset.main, ...draft.tags.filter((x) => x !== t.dataset.main)]; return renderEditor(); }
   if (t.dataset.formality) { draft.formality = Number(t.dataset.formality); return renderEditor(); }
-  if (t.id === "use-tagger") { draft.tags = [...current.tags]; return renderEditor(); }
+  if (t.id === "use-tagger") { draft.tags = [...(current.tags.length ? current.tags : current.modelTags || [])]; return renderEditor(); }
   if (t.id === "save-label") return saveLabel().catch(fail);
   if (t.id === "remove-label") return removeLabel().catch(fail);
 });
@@ -730,21 +736,32 @@ $("#retrain").addEventListener("click", retrain);
 $("#restore").addEventListener("click", () => restore().catch(fail));
 
 document.querySelectorAll(".modes button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === MODE)));
-let slowLoad = null;  // only explain the wait when there is one: the first Category visit after a server start
-if (CATEGORY) {
-  $("#status").textContent = "Loading the category tagger...";
+let slowLoad = null;  // only explain the wait when there is one: the first Category or Bridal visit after a server start
+if (!STYLE) {
+  const [load, train] = CATEGORY ? ["about a minute", "about 10 minutes"] : ["about 10 seconds", "about a minute"];
+  $("#status").textContent = `Loading the ${MODE} tagger...`;
   slowLoad = setTimeout(() => {
-    $("#cat-empty").textContent = "Loading the category tagger, which happens once after each server start and takes about a minute. " +
-      "It takes about 10 minutes instead if it has to train from scratch: the first time, or after the catalog or the code changed. " +
-      "This page fills in by itself, and Style keeps working in the meantime.";
+    $("#cat-empty").textContent = `Loading the ${MODE} tagger, which happens once after each server start and takes ${load}. ` +
+      `It takes ${train} instead if it has to train from scratch: the first time, or after the catalog or the code changed` +
+      (CATEGORY ? ". " : ", or Style's bridal tags. ") + "This page fills in by itself, and Style keeps working in the meantime.";
     $("#cat-empty").hidden = false;
   }, 1500);
+}
+if (CATEGORY) {
   $("#tab-catalog .hint").textContent = "Each product shows the category the tagger gives it, learned from every brand's own category. If it is wrong, " +
     "open the product and set the right one: your label decides that product and teaches the tagger. Press Retrain, then look at What changed.";
   $("#tab-labels .hint").textContent = "Every product starts with its brand category. Those train the tagger but don't decide a product's output; only the labels " +
     "you set do (marked edited). \"Tagger says\" is its answer when it has not seen that label. A mismatch (red) often means the brand filed the product wrongly.";
-  $("#cat-labelled").parentElement.lastChild.textContent = " Only my labels";
 }
+if (MODE === "bridal") {
+  $("#tab-catalog .hint").textContent = "Which of her wedding functions each bride's outfit is for: the app's bridal substyles. Only a bride's outfit gets " +
+    "one (what Style calls bridal wear, or a lehenga, gharara or sharara at a bride's price), so other products show up here only when you search for them. If a product's functions are wrong, open it " +
+    "and set the right ones: your label decides that product and teaches the tagger. Press Retrain, then look at What changed.";
+  $("#tab-labels .hint").textContent = "A bride's outfits start with a guess: the function their listing names, or else their main colour (red: barat; yellow, " +
+    "green, orange or hot pink: mehendi, and dholki unless it is one of her heaviest; white or ivory: nikah; gold, silver or champagne: valima; pastel: nikah and valima). Those train the " +
+    "tagger but don't decide a product's output; only the labels you set do (marked edited). \"Tagger says\" is its answer when it has not seen that label.";
+}
+if (!STYLE) $("#cat-labelled").parentElement.lastChild.textContent = " Only my labels";
 
 refresh().then(() => {
   clearTimeout(slowLoad);

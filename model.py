@@ -282,6 +282,12 @@ class CategoryTagger(Tagger):
         return [self.tags[j] for j in top], []
 
 
+class BridalTagger(Tagger):
+    """Learns which wedding function (desi_rules.EVENTS) an outfit is for, from the style tagger's features, without
+    its house rules or formality. Its few thousand labels need no faster solver: about a minute with the style one's."""
+    choose = CategoryTagger.choose
+
+
 def tag_categories(tagger: Tagger, labels: dict[str, dict], excluded: set[str] = frozenset()) -> dict[str, dict]:
     """The category tagger's output, one record per product. A starting label (the brand's category) only trains
     the model, so the product outputs the model's answer; a hand label also decides its own product's output."""

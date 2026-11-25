@@ -117,10 +117,13 @@ SIGNAL_NAMES = {
 }
 
 
+def url_words(r: dict) -> str:
+    # brands encode collections and colours in URL slugs and image file names ("/Formal/", "Mina-bridals-2.jpg")
+    return " ".join(re.sub(r"[-_/.]+", " ", URL_HOST.sub("", u or "")) for u in (r.get("url"), r.get("imageUrl")))
+
+
 def product_text(r: dict) -> str:
-    # brands encode collections in URL slugs and image file names ("/Formal/", "Mina-bridals-2.jpg")
-    slugs = " ".join(re.sub(r"[-_/.]+", " ", URL_HOST.sub("", u or "")) for u in (r.get("url"), r.get("imageUrl")))
-    return " ".join([r["name"], r["desc"], r["details"], r["keywords"], slugs]).lower()
+    return " ".join([r["name"], r["desc"], r["details"], r["keywords"], url_words(r)]).lower()
 
 
 def signals(r: dict) -> dict[str, float]:
@@ -254,3 +257,80 @@ def choose_tags(probs: dict[str, float], thresholds: dict[str, float], s: dict,
         note("modest", "removed", "no abaya / hijab-type garment and not in the Modest Wear category")
     blocked = {"bridal_wear", "modest"}
     return tags[:max_tags] or [t for t in order if t not in blocked][:1], notes
+
+
+# ---- the bridal tagger (app.BridalApp): which of her wedding functions a bride's outfit is for --------------------
+# The app's bridal substyles, in its order and spelling. They are not TAGS: only a bride's outfit gets one.
+EVENTS = ["mehendi", "barat", "valima", "nikah", "dholki"]
+# Style's bridal_wear is the bride's heaviest outfits. A wedding outfit in a bridal silhouette (lehenga, gharara,
+# sharara, pishwas...) from this price is one for her lighter functions too; below it they were mostly guests' outfits.
+BRIDE_OUTFIT_PRICE = 100_000
+BRIDE_MEHNDI_PRICE = 70_000   # the same in the mehndi colours: the bride dresses lighter for her mehndi and dholki
+
+# the function a listing names ("mehndi green" is a colour, not the function)
+EVENT_WORDS = {
+    "mehendi": rx(r"meh[ea]?n?di(?![ -]?green)", r"may(?:u+|oo?)n", r"haldi", r"ubtan"),
+    "barat": rx(r"bara+t"),
+    "valima": rx(r"wa+lima", r"va+lima", r"reception"),
+    "nikah": rx(r"nikk?ah"),
+    "dholki": rx(r"dholki", r"dholak", r"sangeet"),
+}
+# Otherwise its main colour, from the bride's palette for each function: red and maroon for the barat; yellow, orange,
+# green, hot pink and multicolour for the mehndi and dholki; white and ivory for the nikah; gold, silver and champagne
+# for the valima; pastels for the nikah or valima. Pink, blue and purple are worn to any of them. Brides don't wear black.
+EVENT_COLOURS = [
+    (rx(r"red", r"maroon", r"burgundy", r"crimson", r"scarlet", r"wine", r"oxblood"), ["barat"]),
+    (rx(r"yellow", r"mustard", r"lemon", r"marigold", r"saffron", r"orange", r"tangerine", r"rust", r"green",
+        r"parrot", r"lime", r"pista(?:chio)?", r"multi[- ]?colou?r(?:ed)?", r"colou?rful", r"hot pink", r"shocking pink",
+        r"rani pink", r"fuchsia", r"fuschia", r"magenta", r"turquoise", r"teal", r"feroz[ai]"), ["mehendi", "dholki"]),
+    (rx(r"white", r"off[- ]?white", r"ivory", r"cream", r"pearl white"), ["nikah"]),
+    (rx(r"gold(?:en)?", r"silver", r"champagne", r"bronze", r"metallic", r"beige", r"nude", r"fawn"), ["valima"]),
+    (rx(r"pastels?", r"ice ?blue", r"powder ?blue", r"sky ?blue", r"light blue", r"baby ?pink", r"blush", r"tea ?pink",
+        r"light pink", r"lilac", r"lavender", r"mint", r"peach"), ["nikah", "valima"]),
+    (rx(r"black"), []),
+]
+MEHNDI_COLOURS = EVENT_COLOURS[1][1]
+
+
+def event_text(p: dict) -> str:
+    return " ".join([p["name"], url_words(p), p["desc"], p["details"], p["keywords"]]).lower()
+
+
+def main_colour(p: dict) -> list[str] | None:
+    """The functions a product's main colour points to: the colour named first, in its name, URL, then description.
+    [] for black, None when it names no colour."""
+    text = event_text(p)
+    found = [(m.start(), events) for pat, events in EVENT_COLOURS if (m := pat.search(text))]
+    return min(found, key=lambda x: x[0])[1] if found else None
+
+
+def bridal_scope(p: dict, r: dict) -> bool:
+    """Is product p a bride's outfit, for one of her functions? r is the style tagger's output for it. Yes when Style
+    tags it bridal_wear or its model chose bridal_wear (only the bride rule's price removed it), though under the
+    outfit price only in a bridal silhouette: a cheaper kurta "for the bride or a close attendee" is marketing. Yes too
+    for a wedding outfit in a bridal silhouette at a bride's price. Never a black outfit, nor a sherwani or prince coat
+    (one brand files its groom wear under women). A Style label decides: without bridal_wear it is a guest's outfit."""
+    if r["gender"] != "women" or SUBSUB_FAMILY.get(p["subSub"]) == "g_groom" or WORDS["g_groom"].search(p["name"].lower()):
+        return False
+    colour = main_colour(p)
+    if colour == []:
+        return False
+    price = p["price"] or 0
+    silhouette = bool(SUBSUB_FAMILY.get(p["subSub"]) == "g_bridal" or WORDS["g_bridal"].search(product_text(p)))
+    if "bridal_wear" in r["tags"] or any(n["tag"] == "bridal_wear" for n in r["ruleNotes"]):
+        return silhouette or not 0 < price < BRIDE_OUTFIT_PRICE   # couture listings without a price are the bride's
+    if r.get("source") == "label":
+        return False
+    floor = BRIDE_MEHNDI_PRICE if colour == MEHNDI_COLOURS else BRIDE_OUTFIT_PRICE
+    return "wedding" in r["tags"] and price >= floor and silhouette
+
+
+def bridal_events(p: dict, formality: float) -> list[str]:
+    """A starting guess at the functions a bride's outfit is for: the one or two its listing names, else the ones its
+    main colour points to. [] when neither."""
+    named = [e for e, pat in EVENT_WORDS.items() if pat.search(event_text(p))]
+    if 1 <= len(named) <= 2:   # a listing that names three or more is "for every function", which says nothing
+        return named
+    events = main_colour(p) or []
+    # the dholki is the lighter function: the bride's heaviest outfits (formality 5, Style's bridal_wear) are for the mehndi
+    return ["mehendi"] if "dholki" in events and formality >= 5 else events

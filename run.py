@@ -6,6 +6,7 @@
   python run.py eval --benchmark       the fixed check against the original held-out labels
   python run.py tag                 4. tag every product -> data/predictions.jsonl
   python run.py tag --mode category    the same with subSubCategory -> data/category_predictions.jsonl (minutes)
+  python run.py tag --mode bridal      wedding functions (mehendi, barat...) of a bride's outfits -> data/bridal_predictions.jsonl
   python run.py serve               5. web app at http://127.0.0.1:8765
 """
 
@@ -35,7 +36,7 @@ def main() -> None:
     p = sub.add_parser("eval", help="score the tagger")
     p.add_argument("--benchmark", action="store_true", help="original train/test split instead of your labels")
     p = sub.add_parser("tag", help="tag every product")
-    p.add_argument("--mode", choices=("style", "category"), default="style")
+    p.add_argument("--mode", choices=("style", "category", "bridal"), default="style")
     p = sub.add_parser("serve", help="start the web app")
     p.add_argument("--port", type=int, default=config.PORT)
     args = parser.parse_args()
@@ -52,7 +53,9 @@ def main() -> None:
         import app
         t0 = time.time()
         # the web app's startup: tags every product and keeps the old output for "What changed"
-        a = (app.CategoryApp if args.mode == "category" else app.App)()
+        a = app.CategoryApp() if args.mode == "category" else app.App()
+        if args.mode == "bridal":   # its scope is read from the style output, so style comes first
+            a = app.BridalApp(a)
         print(f"tagged {len(a.current):,} products ({len(a.feats.vector_row):,} with an image vector) -> "
               f"{a.files.predictions} ({time.time() - t0:.0f} s)")
         return

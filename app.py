@@ -33,7 +33,7 @@ PASSWORD = os.environ.get("TAGGER_PASSWORD", "").strip()   # set only on the onl
 
 
 class App:
-    """The style tagger (occasion tags). CategoryApp below changes what it learns from, not how the app works."""
+    """The style tagger (occasion tags). CategoryApp and BridalApp below change what they learn from, not how the app works."""
     name = "style"
     files = config.STYLE
     tags = R.TAGS
@@ -163,7 +163,8 @@ class App:
         gender, only_excluded = q.get("gender", ""), q.get("excluded") == "1"
         labels = self.labels()
         hits = [p["id"] for p in self.products
-                if (not text or text in f'{p["name"]} {p["supplier"]} {p["id"]}'.lower())
+                if (text in f'{p["name"]} {p["supplier"]} {p["id"]}'.lower() if text  # bridal: other products only by search
+                    else only_excluded or self.current[p["id"]]["source"] != "not bridal")
                 and (not tag or tag in self.current[p["id"]]["tags"])
                 and (not gender or p["gender"] == gender)
                 and (not only_labelled or self.pins(labels.get(p["id"])))
@@ -327,6 +328,7 @@ class CategoryApp(App):
     files = config.CATEGORY
     hand_only = True
     tag_catalog = staticmethod(M.tag_categories)
+    tagger_class = M.CategoryTagger
 
     def __init__(self, products: list[dict] | None = None, vectors: tuple | None = None):
         products = catalog.load() if products is None else products
@@ -351,15 +353,15 @@ class CategoryApp(App):
         return M.Features(self.products, self.files.features, blind=True, vectors=vectors)
 
     def make_tagger(self, labels: dict[str, dict]) -> M.Tagger:
-        """A full training takes about 10 minutes, so the fitted tagger is saved, and only tags whose labels
-        changed are refitted. Adding or removing a training row (an exclusion, a removed label) refits everything."""
+        """A full training takes about 10 minutes (Bridal's about one), so the fitted tagger is saved, and only tags whose
+        labels changed are refitted. Adding or removing a training row (an exclusion, a removed label) refits everything."""
         code = (config.PRODUCTS, Path(R.__file__), Path(M.__file__), Path(config.__file__))
         key = [f.stat().st_mtime for f in code] + [len(self.feats.vector_row)]  # what makes a saved tagger stale
         reuse = getattr(self, "tagger", None)
         if reuse is None and self.files.tagger.exists():
             saved = joblib.load(self.files.tagger)
             reuse = saved["tagger"] if saved["key"] == key else None
-        tagger = M.CategoryTagger(self.feats, labels, self.tags, reuse)
+        tagger = self.tagger_class(self.feats, labels, self.tags, reuse=reuse)
         tmp = self.files.tagger.with_suffix(".tmp")   # replaced whole, so a crash mid-write can't leave half a file
         joblib.dump({"key": key, "tagger": tagger}, tmp)
         os.replace(tmp, self.files.tagger)
@@ -379,6 +381,40 @@ class CategoryApp(App):
             labels.pop(pid, None)
 
 
+class BridalApp(CategoryApp):
+    """Which of her wedding functions (mehendi, barat, valima, nikah, dholki) a bride's outfit is for: the app's bridal
+    substyles. Only a bride's outfit gets these tags (desi_rules.bridal_scope, read from the style tagger's output at
+    every training, so a style retrain moves them at the next bridal one). Starting labels come from the desi rules (the
+    function a listing names, else its main colour). Like brand categories they train the model but don't decide a
+    product's output; your labels do, even on a product that isn't a bride's outfit."""
+    name = "bridal"
+    files = config.BRIDAL
+    tags = R.EVENTS
+    tagger_class = M.BridalTagger
+
+    def __init__(self, style: App):
+        self.style, self.seeds = style, {}
+        scope = self.scope()
+        for row, p in enumerate(style.products):  # catalog order, so My labels lists them the same way every run
+            if p["id"] in scope and (events := R.bridal_events(p, R.formality(style.feats.signals(row)))):
+                self.seeds[p["id"]] = {"id": p["id"], "tags": events}
+        App.__init__(self, style.products)   # CategoryApp's own __init__ would make brand-category starting labels
+
+    def scope(self) -> set[str]:
+        return {p["id"] for p in self.style.products if R.bridal_scope(p, self.style.current[p["id"]])}
+
+    def make_features(self, vectors: tuple | None) -> M.Features:
+        return self.style.feats
+
+    def tag_catalog(self, tagger: M.Tagger, labels: dict[str, dict], excluded: set[str]) -> dict[str, dict]:
+        out, scope = M.tag_categories(tagger, labels, excluded), self.scope()
+        for pid, rec in out.items():
+            if rec["source"] == "model" and pid not in scope:   # your label still decides
+                out[pid] = {**rec, "tags": [], "tagScores": {}, "modelTags": rec["tags"], "source": "not bridal",
+                            "needsReview": False}
+        return out
+
+
 def slim(m: dict) -> dict:
     return {k: round(m[k], 4) for k in ("n", "micro_f1", "top_tag_right", "top_tag_acceptable")}
 
@@ -395,18 +431,19 @@ def password_ok(authorization: str, password: str) -> bool:
 
 class Handler(BaseHTTPRequestHandler):
     apps: dict[str, App]
-    build_lock = threading.Lock()
+    build_locks = {"category": threading.Lock(), "bridal": threading.Lock()}   # Bridal needn't wait for a Category build
 
     def pick(self, q: dict) -> App:
-        """The tagger a request is for. The category tagger gets ready the first time someone asks for it."""
+        """The tagger a request is for. Category and Bridal get ready the first time someone asks for them."""
         mode = q.get("mode", "style")
-        if mode not in ("style", "category"):
+        if mode not in ("style", "category", "bridal"):
             raise ValueError(f"unknown mode {mode!r}")
         if mode not in self.apps:  # checked outside the lock, so style keeps working while category trains
-            with self.build_lock:
+            with self.build_locks[mode]:
                 if mode not in self.apps:
                     style = self.apps["style"]
-                    self.apps[mode] = CategoryApp(style.products, (style.feats.vector_row, style.feats.vectors))
+                    self.apps[mode] = (BridalApp(style) if mode == "bridal" else
+                                       CategoryApp(style.products, (style.feats.vector_row, style.feats.vectors)))
         return self.apps[mode]
 
     def allowed(self) -> bool:

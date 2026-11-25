@@ -224,6 +224,58 @@ def test_category_tagger_picks_and_pins():
     assert out["c"]["tags"] == [] and out["c"]["source"] == "excluded"
 
 
+def test_bridal_starting_labels():
+    guess = lambda formality=4.5, **kw: R.bridal_events(product(**kw), formality)
+    assert guess(name="Zaib Lehenga", desc="a red lehenga for your mehndi") == ["mehendi"]   # a named function beats colour
+    assert guess(name="Mehendi Gharara") == ["mehendi"]                                       # the app's spelling
+    assert guess(name="Gul", desc="for your barat, walima or nikkah") == []                   # three named say nothing...
+    assert guess(name="Red Gul", desc="for your barat, walima or nikkah") == ["barat"]        # ...so the colour decides
+    assert guess(name="Ivory Gharara", desc="with a mehndi green dupatta") == ["nikah"]       # a colour, not the function
+    assert guess(name="Red and Gold Lehenga") == ["barat"] and guess(name="Gold and Red Lehenga") == ["valima"]  # first named
+    assert guess(name="Lehenga", url="https://x.pk/products/maroon-bridal-lehenga") == ["barat"]                 # URL slug
+    assert guess(name="Lilac Maxi") == ["nikah", "valima"] and guess(name="Embroidered Lehenga") == []          # not "red"
+    assert guess(name="Hot Pink Gharara") == guess(name="Teal Lehenga") == ["mehendi", "dholki"]                # the mehndi palette
+    assert guess(name="Black Net Saree") == [] and guess(name="Navy Lehenga") == []
+    assert guess(name="Yellow Gharara") == ["mehendi", "dholki"] and guess(5.0, name="Yellow Gharara") == ["mehendi"]  # her heaviest
+
+
+def test_bridal_scope_is_the_brides_outfits():
+    scope = R.bridal_scope
+    rec = lambda tags=("wedding",), notes=(), gender="women": dict(gender=gender, tags=list(tags), ruleNotes=list(notes))
+    outfit = lambda price=500000, name="Zaib Lehenga", sub="": product(name=name, price=price, subSub=sub)
+    assert scope(outfit(name="Zaib"), rec(["bridal_wear", "wedding"]))                      # Style's bride
+    assert scope(outfit(name="Zaib"), rec(notes=[{"tag": "bridal_wear", "change": "removed"}]))  # Style's model said bride
+    assert scope(outfit(60000), rec(["bridal_wear"])) and not scope(outfit(60000, "Zaib Kurta"), rec(["bridal_wear"]))
+    assert scope(outfit(None, "Zaib"), rec(["bridal_wear"]))           # couture with no price
+    assert scope(outfit(120000), rec()) and not scope(outfit(80000), rec())                 # a lehenga at a bride's price
+    assert scope(outfit(120000, "Zaib", "gharara"), rec())                                  # ...its category says so too
+    assert scope(outfit(80000, "Mustard Lehenga"), rec()) and not scope(outfit(60000, "Mustard Lehenga"), rec())  # mehndi
+    assert not scope(outfit(300000, "Ivory Kurta Set"), rec())          # not a bridal silhouette
+    assert not scope(outfit(), rec(["festive_wear"]))                   # not wedding wear
+    assert not scope(outfit(), {**rec(), "source": "label"})            # your Style label: a guest's wedding outfit
+    assert not scope(outfit(name="Black Lehenga"), rec(["bridal_wear"]))  # brides don't wear black
+    assert not scope(outfit(), rec(["bridal_wear"], gender="men"))
+    assert not scope(outfit(sub="sherwani"), rec(["bridal_wear"])) and not scope(outfit(name="Ivory Sherwani"), rec(["bridal_wear"]))
+
+
+def test_bridal_tags_only_brides_outfits():
+    import numpy as np
+    import app as A
+    import model as M
+    a = A.BridalApp.__new__(A.BridalApp)   # no training needed for this
+    ps = [product(id=i, name=n, price=300000, supplier="x", subSubRaw="") for i, n in (("a", "Lehenga"), ("b", "Kurta"), ("c", "Lehenga"))]
+    a.style = type("S", (), {"products": ps, "current": {i: {"gender": g, "tags": ["wedding"], "ruleNotes": []}
+                                                         for i, g in (("a", "women"), ("b", "women"), ("c", "men"))}})
+    tagger = M.BridalTagger.__new__(M.BridalTagger)
+    tagger.tags = R.EVENTS
+    tagger.feats = type("F", (), {"products": ps})
+    tagger.predict = lambda rows: (np.tile([.9, .1, .1, .1, .1], (len(rows), 1)), None, np.full((len(rows), 5), .5), set())
+    out = a.tag_catalog(tagger, {"c": {"id": "c", "tags": ["barat"], "hand": True}}, set())
+    assert out["a"]["tags"] == ["mehendi"] and out["a"]["source"] == "model"
+    assert out["b"]["tags"] == [] and out["b"]["modelTags"] == ["mehendi"] and out["b"]["source"] == "not bridal"
+    assert out["c"]["tags"] == ["barat"] and out["c"]["source"] == "label"   # your label decides, even outside the scope
+
+
 def test_no_photo_follows_what_the_app_shows():
     import remove_no_photo as N
     saved = N.probe

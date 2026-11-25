@@ -42,6 +42,11 @@ CATEGORY = Files(ROOT / "labels" / "category_labels.jsonl", ROOT / "labels" / "c
                  DATA / "category_features.joblib", DATA / "category_predictions.jsonl",
                  DATA / "category_predictions.previous.jsonl", DATA / "category_last_changes.json",
                  DATA / "category_tagger.joblib")
+# The bridal tagger (mehendi, barat...) uses the style tagger's features. Like the category tagger, its label file
+# holds only your edits: its starting labels come from desi_rules.bridal_events.
+BRIDAL = Files(ROOT / "labels" / "bridal_labels.jsonl", ROOT / "labels" / "bridal_exclusions.json", FEATURES_CACHE,
+               DATA / "bridal_predictions.jsonl", DATA / "bridal_predictions.previous.jsonl",
+               DATA / "bridal_last_changes.json", DATA / "bridal_tagger.joblib")
 
 # Image model: Marqo-FashionSigLIP, the best open fashion model in our trial.
 IMAGE_MODEL = "hf-hub:Marqo/marqo-fashionSigLIP"
